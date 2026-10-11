@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, before, test } from "node:test";
 import type { Server } from "node:http";
 import { app as apiApp } from "../src/api.js";
@@ -196,4 +199,146 @@ test("bridge setup endpoint reflects missing Railway configuration", async () =>
     assert.equal(setup.railway.ready, false);
     assert.match(setup.railway.message, /Set AGENT_API_URL/);
   });
+});
+
+test("chat and approval reject bad tokens without starting Studio or consuming an approval", async () => {
+  const environment = new Map(
+    ["AGENT_API_URL", "AGENT_API_TOKEN", "ROBLOX_MCP_COMMAND", "ROBLOX_MCP_ARGS"]
+      .map((key) => [key, process.env[key]]),
+  );
+  const originalFetchImplementation = globalThis.fetch;
+  const tempDirectory = await mkdtemp(join(tmpdir(), "roblox-bridge-auth-"));
+  const toolCallsPath = join(tempDirectory, "studio-tool-calls.txt");
+  const mcpServer = `
+    import { appendFileSync, writeFileSync } from "node:fs";
+    import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+    import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+    import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+    const marker = ${JSON.stringify(toolCallsPath)};
+    writeFileSync(marker + ".pid", String(process.pid));
+    const server = new Server({ name: "auth-test-studio", version: "1.0.0" }, { capabilities: { tools: {} } });
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({
+      tools: [{ name: "write_script", description: "Write a Studio script", inputSchema: { type: "object", properties: {} } }],
+    }));
+    server.setRequestHandler(CallToolRequestSchema, async () => {
+      appendFileSync(marker, "called\\\\n");
+      return { content: [{ type: "text", text: "written" }] };
+    });
+    await server.connect(new StdioServerTransport());
+  `;
+  let outboundFetches = 0;
+
+  process.env["AGENT_API_URL"] = "https://railway.example";
+  process.env["AGENT_API_TOKEN"] = "test-api-token";
+  process.env["ROBLOX_MCP_COMMAND"] = process.execPath;
+  process.env["ROBLOX_MCP_ARGS"] = JSON.stringify(["--input-type=module", "-e", mcpServer]);
+  mockFetch(async () => {
+    outboundFetches += 1;
+    const content =
+      outboundFetches === 1
+        ? { role: "model", parts: [{ functionCall: { name: "write_script", args: {} } }] }
+        : { role: "model", parts: [{ text: "The change was declined." }] };
+    return new Response(JSON.stringify({ candidates: [{ content }] }), {
+      headers: { "content-type": "application/json" },
+    });
+  });
+
+  const server = bridgeApp.listen(0, "127.0.0.1");
+  try {
+    await withServer(server, async (baseUrl) => {
+      const configResponse = await originalFetch(`${baseUrl}/api/bridge-config`);
+      assert.equal(configResponse.status, 200);
+      const config = (await configResponse.json()) as { bridgeToken: string };
+      assert.equal(typeof config.bridgeToken, "string");
+      assert.notEqual(config.bridgeToken.length, 0);
+
+      const chatRequest = {
+        path: "/api/chat",
+        body: { message: "Make a change in Studio.", sessionId: "auth-regression-session" },
+      };
+      for (const authorization of [undefined, "Bearer incorrect-local-token"]) {
+        const response = await originalFetch(`${baseUrl}${chatRequest.path}`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(authorization ? { authorization } : {}),
+          },
+          body: JSON.stringify(chatRequest.body),
+        });
+        assert.equal(response.status, 401);
+        assert.deepEqual(await response.json(), { error: "Invalid local bridge token." });
+      }
+      assert.equal(outboundFetches, 0);
+      await assert.rejects(readFile(`${toolCallsPath}.pid`), { code: "ENOENT" });
+      let health = (await (await originalFetch(`${baseUrl}/healthz`)).json()) as {
+        mcpConnected: boolean;
+      };
+      assert.equal(health.mcpConnected, false);
+
+      const chatResponse = await originalFetch(`${baseUrl}/api/chat`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${config.bridgeToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(chatRequest.body),
+      });
+      assert.equal(chatResponse.status, 200);
+      const pending = (await chatResponse.json()) as {
+        needsApproval: boolean;
+        pendingId: string;
+      };
+      assert.equal(pending.needsApproval, true);
+      assert.equal(typeof pending.pendingId, "string");
+      assert.equal(outboundFetches, 1);
+      health = (await (await originalFetch(`${baseUrl}/healthz`)).json()) as {
+        mcpConnected: boolean;
+      };
+      assert.equal(health.mcpConnected, true);
+
+      for (const authorization of [undefined, "Bearer incorrect-local-token"]) {
+        const response = await originalFetch(`${baseUrl}/api/approve`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(authorization ? { authorization } : {}),
+          },
+          body: JSON.stringify({ pendingId: pending.pendingId, approved: true }),
+        });
+        assert.equal(response.status, 401);
+        assert.deepEqual(await response.json(), { error: "Invalid local bridge token." });
+      }
+      assert.equal(outboundFetches, 1);
+      await assert.rejects(readFile(toolCallsPath), { code: "ENOENT" });
+
+      const authorizedDecline = await originalFetch(`${baseUrl}/api/approve`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${config.bridgeToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ pendingId: pending.pendingId, approved: false }),
+      });
+      assert.equal(authorizedDecline.status, 200);
+      assert.deepEqual(await authorizedDecline.json(), {
+        sessionId: "auth-regression-session",
+        answer: "The change was declined.",
+      });
+      assert.equal(outboundFetches, 2);
+      await assert.rejects(readFile(toolCallsPath), { code: "ENOENT" });
+    });
+  } finally {
+    try {
+      const pid = Number(await readFile(`${toolCallsPath}.pid`, "utf8"));
+      if (Number.isInteger(pid) && pid > 0) process.kill(pid, "SIGTERM");
+    } catch {
+      // The child never starts when the authorization guard rejects the request.
+    }
+    globalThis.fetch = originalFetchImplementation;
+    for (const [key, value] of environment) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await rm(tempDirectory, { recursive: true, force: true });
+  }
 });

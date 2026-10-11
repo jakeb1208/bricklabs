@@ -1,1 +1,2 @@
 - [Workspace dependency-install safety](pnpm-workspace-safety.md) — audit workspace configuration after pnpm dependency changes to preserve release-age safeguards.
+- [MCP stdio test environments](mcp-stdio-test-environments.md) — local MCP child processes inherit only a safe environment-variable allowlist by default.
