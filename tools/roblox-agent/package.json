@@ -1,0 +1,16 @@
+{
+  "name": "@workspace/roblox-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:api": "node --env-file-if-exists=.env --import tsx src/api.ts",
+    "dev:bridge": "node --env-file-if-exists=.env --import tsx src/bridge.ts",
+    "build": "tsc -p tsconfig.json",
+    "start:api": "node dist/api.js",
+    "start:bridge": "node --env-file-if-exists=.env dist/bridge.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
