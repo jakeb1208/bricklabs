@@ -545,6 +545,9 @@ export function startBridge(port = bridgePort, connectStudioMcp = true) {
         const message =
           error instanceof Error ? error.message : "Unknown Roblox MCP connection error.";
         process.stderr.write(`Roblox MCP connection unavailable: ${message}\n`);
+        process.stderr.write(
+          "In Roblox Studio, open Assistant → … → Manage MCP Servers and enable “Enable Studio as MCP server.” Keep Studio open, then restart the bridge. If it is already enabled, check your ROBLOX_MCP_COMMAND and ROBLOX_MCP_ARGS settings.\n",
+        );
       });
     }
   });

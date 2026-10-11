@@ -8,6 +8,7 @@ import {
   checkRailwaySetup,
   startBridge,
 } from "../src/bridge.js";
+import { validateBridgeEnvironment } from "../src/setup-bridge.js";
 
 const environmentKeys = [
   "AGENT_API_URL",
@@ -87,6 +88,32 @@ test("setup diagnostics identify missing and invalid Railway URL and token value
   status = await checkRailwaySetup();
   assert.equal(status.ready, false);
   assert.match(status.message, /Set AGENT_API_TOKEN/);
+});
+
+test("guided bridge setup gives actionable advice for missing API and MCP settings", () => {
+  const missingApi = validateBridgeEnvironment({}, "darwin");
+  assert.match(missingApi.join("\n"), /Set AGENT_API_URL/);
+  assert.match(missingApi.join("\n"), /Set AGENT_API_TOKEN/);
+
+  const unsupportedPlatform = validateBridgeEnvironment(
+    {
+      AGENT_API_URL: "https://agent.example",
+      AGENT_API_TOKEN: "configured-test-token",
+    },
+    "linux",
+  );
+  assert.match(unsupportedPlatform.join("\n"), /Set ROBLOX_MCP_COMMAND/);
+
+  const invalidArgs = validateBridgeEnvironment(
+    {
+      AGENT_API_URL: "https://agent.example",
+      AGENT_API_TOKEN: "configured-test-token",
+      ROBLOX_MCP_COMMAND: "studio-mcp",
+      ROBLOX_MCP_ARGS: "not-json",
+    },
+    "linux",
+  );
+  assert.match(invalidArgs.join("\n"), /ROBLOX_MCP_ARGS must be a JSON array/);
 });
 
 test("setup diagnostics report a rejected Railway token without exposing it", async () => {

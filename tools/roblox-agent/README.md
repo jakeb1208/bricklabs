@@ -40,11 +40,13 @@ This bridge uses those documented defaults. For a custom installation, set `ROBL
 
 ## 3. Start the local bridge
 
-Copy `tools/roblox-agent/.env.example` to `tools/roblox-agent/.env`. Set `AGENT_API_URL` to the public Railway service URL and set `AGENT_API_TOKEN` to the same value as the Railway variable. Then, from the repository root:
+Copy `tools/roblox-agent/.env.example` to `tools/roblox-agent/.env`. Set `AGENT_API_URL` to the public Railway service URL and set `AGENT_API_TOKEN` to the same value as the Railway variable. Enable **Assistant → … → Manage MCP Servers → Enable Studio as MCP server** in Roblox Studio, keep Studio open, then run this one guided setup command from the repository root:
 
 ```sh
-pnpm --filter @workspace/roblox-agent run dev:bridge
+pnpm --filter @workspace/roblox-agent run setup:bridge
 ```
+
+The command checks that `.env` exists, validates the Railway URL and token, and checks any custom MCP command settings before starting. It prints a specific fix when configuration is missing or invalid. On Windows and macOS, the bridge uses Roblox's documented Studio MCP command by default; other operating systems need `ROBLOX_MCP_COMMAND` (and optionally `ROBLOX_MCP_ARGS`) in `.env`. If Studio MCP cannot connect, the terminal points you to the Studio MCP switch and the plugin shows the connection status.
 
 The bridge listens only on `127.0.0.1:4317`. Keep that terminal running. Open the plugin to run its setup check; it reports whether Railway is reachable and configured, the local bridge is running, and Studio MCP is connected. To check manually, open `http://127.0.0.1:4317/healthz` for the MCP connection state. The bridge setup check at `http://127.0.0.1:4317/api/setup-status` tests the Railway URL and token without returning either secret.
 

@@ -6,6 +6,7 @@
   "scripts": {
     "dev:api": "node --env-file-if-exists=.env --import tsx src/api.ts",
     "dev:bridge": "node --env-file-if-exists=.env --import tsx src/bridge.ts",
+    "setup:bridge": "node --env-file-if-exists=.env --import tsx src/setup-bridge.ts",
     "build": "tsc -p tsconfig.json",
     "plugin:build": "rojo build -o RobloxStudioGameAgent.rbxmx default.project.json",
     "start:api": "node dist/api.js",
