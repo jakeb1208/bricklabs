@@ -1,2 +1,3 @@
 - [Workspace dependency-install safety](pnpm-workspace-safety.md) — audit workspace configuration after pnpm dependency changes to preserve release-age safeguards.
 - [MCP stdio test environments](mcp-stdio-test-environments.md) — local MCP child processes inherit only a safe environment-variable allowlist by default.
+- [Post-merge runtime budget](post-merge-runtime.md) — an up-to-date frozen install and database check take about 30 seconds in this workspace.
