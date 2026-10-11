@@ -312,23 +312,37 @@ test("chat and approval reject bad tokens without starting Studio or consuming a
       tools: [{ name: "write_script", description: "Write a Studio script", inputSchema: { type: "object", properties: {} } }],
     }));
     server.setRequestHandler(CallToolRequestSchema, async () => {
-      appendFileSync(marker, "called\\\\n");
+      appendFileSync(marker, "called");
       return { content: [{ type: "text", text: "written" }] };
     });
     await server.connect(new StdioServerTransport());
   `;
   let outboundFetches = 0;
+  const geminiRequests: Array<{ contents: Array<Record<string, unknown>> }> = [];
 
   process.env["AGENT_API_URL"] = "https://railway.example";
   process.env["AGENT_API_TOKEN"] = "test-api-token";
   process.env["ROBLOX_MCP_COMMAND"] = process.execPath;
   process.env["ROBLOX_MCP_ARGS"] = JSON.stringify(["--input-type=module", "-e", mcpServer]);
-  mockFetch(async () => {
+  mockFetch(async (_input, init) => {
     outboundFetches += 1;
-    const content =
-      outboundFetches === 1
-        ? { role: "model", parts: [{ functionCall: { name: "write_script", args: {} } }] }
-        : { role: "model", parts: [{ text: "The change was declined." }] };
+    const requestBody = JSON.parse(String(init?.body)) as {
+      contents: Array<Record<string, unknown>>;
+    };
+    geminiRequests.push(requestBody);
+    const content = [1, 3].includes(outboundFetches)
+      ? { role: "model", parts: [{ functionCall: { name: "write_script", args: {} } }] }
+      : {
+          role: "model",
+          parts: [
+            {
+              text:
+                outboundFetches === 2
+                  ? "The change was declined."
+                  : "Studio action completed with result: written.",
+            },
+          ],
+        };
     return new Response(JSON.stringify({ candidates: [{ content }] }), {
       headers: { "content-type": "application/json" },
     });
@@ -417,6 +431,56 @@ test("chat and approval reject bad tokens without starting Studio or consuming a
       });
       assert.equal(outboundFetches, 2);
       await assert.rejects(readFile(toolCallsPath), { code: "ENOENT" });
+
+      const approvedChatResponse = await originalFetch(`${baseUrl}/api/chat`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${config.bridgeToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          message: "Write the approved Studio change.",
+          sessionId: "authorized-approval-session",
+        }),
+      });
+      assert.equal(approvedChatResponse.status, 200);
+      const approvedPending = (await approvedChatResponse.json()) as {
+        needsApproval: boolean;
+        pendingId: string;
+      };
+      assert.equal(approvedPending.needsApproval, true);
+      assert.equal(typeof approvedPending.pendingId, "string");
+      assert.equal(outboundFetches, 3);
+
+      const authorizedApproval = await originalFetch(`${baseUrl}/api/approve`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${config.bridgeToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ pendingId: approvedPending.pendingId, approved: true }),
+      });
+      assert.equal(authorizedApproval.status, 200);
+      assert.deepEqual(await authorizedApproval.json(), {
+        sessionId: "authorized-approval-session",
+        answer: "Studio action completed with result: written.",
+      });
+      assert.equal(outboundFetches, 4);
+      assert.equal(await readFile(toolCallsPath, "utf8"), "called");
+      assert.deepEqual(geminiRequests[3]?.contents.at(-1), {
+        role: "user",
+        parts: [
+          {
+            functionResponse: {
+              name: "write_script",
+              response: {
+                result: "written",
+                isError: false,
+              },
+            },
+          },
+        ],
+      });
     });
   } finally {
     try {
