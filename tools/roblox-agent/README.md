@@ -15,11 +15,12 @@ Roblox Studio's MCP server is a local `stdio` process, so the Railway service ne
 
 ## 1. Deploy the Gemini proxy to Railway
 
-From the repository root, create a Railway service using the repository. Set these commands:
+From the repository root, create a Railway service using the repository. Set its build command to:
 
-- **Build:** `pnpm install --frozen-lockfile && pnpm --filter @workspace/roblox-agent run build`
-- **Start:** `pnpm --filter @workspace/roblox-agent run start:api`
+- **Build:** `pnpm --filter @workspace/roblox-agent run build`
 - **Health check path:** `/healthz`
+
+Railpack detects the root `start` script, which launches the API with `pnpm --filter @workspace/roblox-agent run start:api`. If your Railway service has a manual start-command override, set it to that same command. Railpack detects pnpm from the workspace lockfile and installs dependencies before the build command.
 
 Add these variables in Railway's service variables UI:
 
