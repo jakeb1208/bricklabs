@@ -26,11 +26,22 @@ type GeminiResponse = {
   error?: { message?: string };
 };
 
+type PendingTurn = {
+  sessionId: string;
+  history: GeminiContent[];
+  calls: Array<{ name: string; args: Record<string, unknown> }>;
+};
+
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "64kb" }));
+const port = Number(process.env["BRIDGE_PORT"] || 4317);
+if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+  throw new Error("BRIDGE_PORT must be a valid TCP port.");
+}
 
 const sessions = new Map<string, GeminiContent[]>();
+const pendingTurns = new Map<string, PendingTurn>();
 let mcpClient: Client | null = null;
 let toolDefinitions: ToolDefinition[] = [];
 let connecting: Promise<void> | null = null;
@@ -48,13 +59,40 @@ function sanitizeToolName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 64);
 }
 
+function geminiSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const type = schema["type"];
+  const result: Record<string, unknown> = {};
+  if (typeof type === "string") result["type"] = type.toUpperCase();
+  if (typeof schema["description"] === "string") {
+    result["description"] = schema["description"];
+  }
+  if (Array.isArray(schema["required"])) result["required"] = schema["required"];
+  if (Array.isArray(schema["enum"])) result["enum"] = schema["enum"];
+  const properties = schema["properties"];
+  if (properties && typeof properties === "object" && !Array.isArray(properties)) {
+    result["properties"] = Object.fromEntries(
+      Object.entries(properties).map(([key, value]) => [
+        key,
+        value && typeof value === "object" && !Array.isArray(value)
+          ? geminiSchema(value as Record<string, unknown>)
+          : { type: "STRING" },
+      ]),
+    );
+  }
+  const items = schema["items"];
+  if (items && typeof items === "object" && !Array.isArray(items)) {
+    result["items"] = geminiSchema(items as Record<string, unknown>);
+  }
+  return result;
+}
+
 function toGeminiTools(tools: ToolDefinition[]): Array<Record<string, unknown>> {
   return [
     {
       functionDeclarations: tools.map((tool) => ({
         name: sanitizeToolName(tool.name),
         description: tool.description || tool.name,
-        parameters: tool.inputSchema,
+        parameters: geminiSchema(tool.inputSchema),
       })),
     },
   ];
@@ -188,6 +226,44 @@ function mcpToolName(geminiName: string): string | undefined {
   )?.name;
 }
 
+const READ_ONLY_TOOLS = new Set([
+  "get_console_output",
+  "get_studio_state",
+  "http_get",
+  "inspect_instance",
+  "list_roblox_studios",
+  "script_grep",
+  "script_read",
+  "script_search",
+  "search_game_tree",
+  "skill",
+]);
+
+function isReadOnlyTool(name: string): boolean {
+  return READ_ONLY_TOOLS.has(name);
+}
+
+function toolResultForGemini(result: {
+  [key: string]: unknown;
+}): Record<string, unknown> {
+  const content = Array.isArray(result["content"])
+    ? (result["content"] as Array<{ type?: string; text?: string }>)
+    : [];
+  const output =
+    result["structuredContent"] ??
+    (content.length > 0
+      ? content
+      .map((item) => (item.type === "text" ? item.text ?? "" : `[${item.type} result omitted]`))
+      .join("\n")
+      : result["toolResult"] ?? "The tool returned no content.");
+  const serialized = JSON.stringify(output);
+  const bounded =
+    serialized.length > 12_000
+      ? `${serialized.slice(0, 12_000)}… [tool output truncated]`
+      : output;
+  return { result: bounded, isError: result["isError"] === true };
+}
+
 app.get("/healthz", (_req, res) => {
   res.json({
     status: "ok",
@@ -222,68 +298,9 @@ app.post("/api/chat", async (req: Request, res: Response): Promise<void> => {
 
   try {
     await connectMcp();
-    const history = sessions.get(sessionId) ?? [];
+    const history = [...(sessions.get(sessionId) ?? [])];
     history.push({ role: "user", parts: [{ text: message.trim() }] });
-
-    for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-      const modelContent = await requestGemini(history);
-      history.push(modelContent);
-      const calls = getFunctionCalls(modelContent);
-      if (calls.length === 0) {
-        const answer = modelContent.parts
-          .map((part) => (typeof part["text"] === "string" ? part["text"] : ""))
-          .filter(Boolean)
-          .join("\n")
-          .trim();
-        sessions.set(sessionId, history.slice(-MAX_CHAT_TURNS * 2));
-        res.json({ sessionId, answer });
-        return;
-      }
-
-      for (const call of calls) {
-        const originalName = mcpToolName(call.name);
-        if (!originalName || !mcpClient) {
-          history.push({
-            role: "user",
-            parts: [
-              {
-                functionResponse: {
-                  name: call.name,
-                  response: { error: "Tool is not available in this Studio session." },
-                },
-              },
-            ],
-          });
-          continue;
-        }
-
-        const result = await mcpClient.callTool({
-          name: originalName,
-          arguments: call.args,
-        });
-        history.push({
-          role: "user",
-          parts: [
-            {
-              functionResponse: {
-                name: call.name,
-                response: {
-                  content: result.content,
-                  isError: result.isError === true,
-                },
-              },
-            },
-          ],
-        });
-      }
-    }
-
-    sessions.set(sessionId, history.slice(-MAX_CHAT_TURNS * 2));
-    res.json({
-      sessionId,
-      answer:
-        "I reached the tool-call limit for this turn. Please ask me to continue or split the request into smaller steps.",
-    });
+    await continueTurn(history, sessionId, res);
   } catch (error) {
     const messageText =
       error instanceof Error ? error.message : "The local agent failed unexpectedly.";
@@ -291,15 +308,137 @@ app.post("/api/chat", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-const port = Number(process.env["BRIDGE_PORT"] || 4317);
-if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-  throw new Error("BRIDGE_PORT must be a valid TCP port.");
+app.post("/api/approve", async (req: Request, res: Response): Promise<void> => {
+  if (!authorizeLocalRequest(req, res)) return;
+  const pendingId = req.body?.pendingId;
+  const approved = req.body?.approved;
+  if (typeof pendingId !== "string" || typeof approved !== "boolean") {
+    res.status(400).json({ error: "pendingId and approved are required." });
+    return;
+  }
+
+  const pending = pendingTurns.get(pendingId);
+  if (!pending) {
+    res.status(404).json({ error: "This approval request has expired or was already handled." });
+    return;
+  }
+  pendingTurns.delete(pendingId);
+
+  try {
+    const responseParts: Array<Record<string, unknown>> = [];
+    for (const call of pending.calls) {
+      let response: Record<string, unknown>;
+      if (!approved) {
+        response = { denied: true, message: "The user declined this Studio action." };
+      } else {
+        const originalName = mcpToolName(call.name);
+        if (!originalName || !mcpClient) {
+          response = { error: "Tool is not available in this Studio session." };
+        } else {
+          const result = await mcpClient.callTool({
+            name: originalName,
+            arguments: call.args,
+          });
+          response = toolResultForGemini(result);
+        }
+      }
+      responseParts.push({
+        functionResponse: { name: call.name, response },
+      });
+    }
+    pending.history.push({ role: "user", parts: responseParts });
+    await continueTurn(pending.history, pending.sessionId, res);
+  } catch (error) {
+    const messageText =
+      error instanceof Error ? error.message : "The approved Studio action failed.";
+    res.status(502).json({ error: messageText });
+  }
+});
+
+async function continueTurn(
+  history: GeminiContent[],
+  sessionId: string,
+  res: Response,
+): Promise<void> {
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    const modelContent = await requestGemini(history);
+    history.push(modelContent);
+    const calls = getFunctionCalls(modelContent);
+    if (calls.length === 0) {
+      const answer = modelContent.parts
+        .map((part) => (typeof part["text"] === "string" ? part["text"] : ""))
+        .filter(Boolean)
+        .join("\n")
+        .trim();
+      sessions.set(sessionId, history.slice(-MAX_CHAT_TURNS * 2));
+      res.json({ sessionId, answer });
+      return;
+    }
+
+    const readCalls = calls.filter((call) => {
+      const toolName = mcpToolName(call.name);
+      return toolName !== undefined && isReadOnlyTool(toolName);
+    });
+    const writeCalls = calls.filter((call) => !readCalls.includes(call));
+    const responseParts: Array<Record<string, unknown>> = [];
+
+    for (const call of readCalls) {
+      const originalName = mcpToolName(call.name);
+      if (!originalName || !mcpClient) {
+        responseParts.push({
+          functionResponse: {
+            name: call.name,
+            response: { error: "Tool is not available in this Studio session." },
+          },
+        });
+        continue;
+      }
+      const result = await mcpClient.callTool({
+        name: originalName,
+        arguments: call.args,
+      });
+      responseParts.push({
+        functionResponse: {
+          name: call.name,
+          response: toolResultForGemini(result),
+        },
+      });
+    }
+
+    if (responseParts.length > 0) {
+      history.push({ role: "user", parts: responseParts });
+    }
+
+    if (writeCalls.length > 0) {
+      const pendingId = randomUUID();
+      pendingTurns.set(pendingId, {
+        sessionId,
+        history,
+        calls: writeCalls,
+      });
+      res.json({
+        sessionId,
+        needsApproval: true,
+        pendingId,
+        toolCalls: writeCalls.map((call) => ({
+          name: mcpToolName(call.name) ?? call.name,
+          arguments: call.args,
+        })),
+      });
+      return;
+    }
+  }
+
+  sessions.set(sessionId, history.slice(-MAX_CHAT_TURNS * 2));
+  res.json({
+    sessionId,
+    answer:
+      "I reached the tool-call limit for this turn. Please ask me to continue or split the request into smaller steps.",
+  });
 }
 
 app.listen(port, "127.0.0.1", () => {
-  process.stdout.write(
-    `Roblox local bridge listening on http://127.0.0.1:${port}\nBridge token: ${localToken}\n`,
-  );
+  process.stdout.write(`Roblox local bridge listening on http://127.0.0.1:${port}\n`);
   void connectMcp().catch((error: unknown) => {
     const message =
       error instanceof Error ? error.message : "Unknown Roblox MCP connection error.";

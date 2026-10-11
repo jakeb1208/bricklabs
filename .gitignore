@@ -10,6 +10,7 @@ out-tsc
 
 # dependencies
 node_modules
+tools/roblox-agent/.env
 
 # IDEs and editors
 /.idea

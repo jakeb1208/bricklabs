@@ -1,15 +1,18 @@
-# [Project name]
+# Roblox Studio Game-Building Agent
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A dockable Roblox Studio plugin that uses Roblox's local Studio MCP server and Gemini to help users build games. The Railway API proxy keeps the Gemini API key off the plugin; the local bridge connects Railway to the user's Studio session.
 
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/roblox-agent run dev:api` — run the Gemini proxy API
+- `pnpm --filter @workspace/roblox-agent run dev:bridge` — run the local Roblox MCP bridge
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Configure Gemini and API access in Railway; see `tools/roblox-agent/README.md`.
+- Local bridge env is documented in `tools/roblox-agent/.env.example`.
 
 ## Stack
 
@@ -22,15 +25,20 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `tools/roblox-agent/src/api.ts` — Railway-hosted Gemini API proxy
+- `tools/roblox-agent/src/bridge.ts` — local MCP client and approval-gated agent loop
+- `tools/roblox-agent/src/Plugin.server.lua` — dockable Studio chat plugin
+- `tools/roblox-agent/README.md` — Railway, local bridge, and plugin installation steps
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Keep Roblox's official `stdio` MCP client on the user's computer; Railway cannot reach a local Studio process directly.
+- Keep the Gemini API key in Railway variables, never inside the Studio plugin or bridge.
+- Require explicit approval in Studio before any non-read-only MCP tool call.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+The plugin provides an in-Studio chat surface for game-building requests. The local bridge supplies Roblox MCP tools to Gemini, and the Railway API proxy forwards authenticated Gemini requests without retaining chat history.
 
 ## User preferences
 

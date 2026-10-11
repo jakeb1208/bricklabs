@@ -11,6 +11,14 @@
     "start:bridge": "node --env-file-if-exists=.env dist/bridge.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
-  "dependencies": {},
-  "devDependencies": {}
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "~5.9.3"
+  }
 }

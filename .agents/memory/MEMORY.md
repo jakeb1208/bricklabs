@@ -1,0 +1,1 @@
+- [Workspace dependency-install safety](pnpm-workspace-safety.md) — audit workspace configuration after pnpm dependency changes to preserve release-age safeguards.

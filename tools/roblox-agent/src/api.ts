@@ -71,7 +71,9 @@ app.post(
       }));
       res.status(upstream.status).json(responseBody);
     } catch (error) {
-      req.log?.error?.({ error }, "Gemini request failed");
+      process.stderr.write(
+        `Gemini API request failed: ${error instanceof Error ? error.message : "unknown error"}\n`,
+      );
       res.status(502).json({ error: "Could not reach the Gemini API." });
     }
   },

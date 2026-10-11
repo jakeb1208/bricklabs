@@ -1,0 +1,9 @@
+{
+  "name": "RobloxStudioGameAgent",
+  "tree": {
+    "$className": "Plugin",
+    "RobloxStudioGameAgent": {
+      "$path": "src/Plugin.server.lua"
+    }
+  }
+}
