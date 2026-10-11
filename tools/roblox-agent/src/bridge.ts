@@ -45,6 +45,7 @@ const pendingTurns = new Map<string, PendingTurn>();
 let mcpClient: Client | null = null;
 let toolDefinitions: ToolDefinition[] = [];
 let connecting: Promise<void> | null = null;
+let mcpConnectionError: string | null = null;
 const localToken = process.env["BRIDGE_TOKEN"]?.trim() || randomUUID();
 
 function authorizeLocalRequest(req: Request, res: Response): boolean {
@@ -144,11 +145,87 @@ async function connectMcp(): Promise<void> {
       inputSchema: tool.inputSchema as Record<string, unknown>,
     }));
     mcpClient = client;
+    mcpConnectionError = null;
   })().finally(() => {
     connecting = null;
   });
 
-  return connecting;
+  return connecting.catch((error: unknown) => {
+    mcpConnectionError =
+      error instanceof Error ? error.message : "Unknown Roblox Studio MCP connection error.";
+    throw error;
+  });
+}
+
+type RailwaySetupStatus = {
+  ready: boolean;
+  message: string;
+};
+
+async function checkRailwaySetup(): Promise<RailwaySetupStatus> {
+  let apiUrl: string;
+  try {
+    apiUrl = getApiBaseUrl();
+  } catch {
+    return {
+      ready: false,
+      message: "Set AGENT_API_URL in tools/roblox-agent/.env to your Railway service URL.",
+    };
+  }
+
+  const token = process.env["AGENT_API_TOKEN"]?.trim();
+  if (!token) {
+    return {
+      ready: false,
+      message: "Set AGENT_API_TOKEN in tools/roblox-agent/.env to match Railway.",
+    };
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(apiUrl);
+  } catch {
+    return { ready: false, message: "AGENT_API_URL is not a valid URL." };
+  }
+  if (parsedUrl.protocol !== "https:") {
+    return { ready: false, message: "AGENT_API_URL must use the secure https:// Railway URL." };
+  }
+
+  try {
+    const response = await fetch(`${apiUrl}/api/setup-check`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    const body = (await response.json().catch(() => ({}))) as {
+      ready?: boolean;
+      error?: string;
+    };
+    if (response.status === 401) {
+      return {
+        ready: false,
+        message: "Railway rejected AGENT_API_TOKEN. Make it match the Railway service variable.",
+      };
+    }
+    if (!response.ok) {
+      return {
+        ready: false,
+        message:
+          body.error ||
+          `Railway setup check returned HTTP ${response.status}; verify the service deployment.`,
+      };
+    }
+    return body.ready
+      ? { ready: true, message: "Connected and configured." }
+      : {
+          ready: false,
+          message: body.error || "Check GEMINI_API_KEY in Railway service variables.",
+        };
+  } catch {
+    return {
+      ready: false,
+      message: "Can't reach Railway. Check AGENT_API_URL and confirm the Railway service is running.",
+    };
+  }
 }
 
 async function requestGemini(contents: GeminiContent[]): Promise<GeminiContent> {
@@ -276,6 +353,23 @@ app.get("/api/bridge-config", (_req, res) => {
   res.json({
     apiBaseUrl: `http://127.0.0.1:${port}`,
     bridgeToken: localToken,
+  });
+});
+
+app.get("/api/setup-status", async (_req, res): Promise<void> => {
+  const railway = await checkRailwaySetup();
+  const studioMcpConnected = mcpClient !== null;
+  res.json({
+    railway,
+    studioMcp: {
+      connected: studioMcpConnected,
+      toolCount: toolDefinitions.length,
+      message: studioMcpConnected
+        ? `Connected (${toolDefinitions.length} tools).`
+        : connecting
+          ? "Connecting to Studio MCP…"
+          : `Enable Studio as an MCP server in Studio, then restart the bridge.${mcpConnectionError ? ` Details: ${mcpConnectionError}` : ""}`,
+    },
   });
 });
 

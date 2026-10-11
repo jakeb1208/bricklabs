@@ -46,17 +46,19 @@ Copy `tools/roblox-agent/.env.example` to `tools/roblox-agent/.env`. Set `AGENT_
 pnpm --filter @workspace/roblox-agent run dev:bridge
 ```
 
-The bridge listens only on `127.0.0.1:4317`. Keep that terminal running. Check `http://127.0.0.1:4317/healthz`; it should report `mcpConnected: true` and a nonzero `toolCount`.
+The bridge listens only on `127.0.0.1:4317`. Keep that terminal running. Open the plugin to run its setup check; it reports whether Railway is reachable and configured, the local bridge is running, and Studio MCP is connected. To check manually, open `http://127.0.0.1:4317/healthz` for the MCP connection state. The bridge setup check at `http://127.0.0.1:4317/api/setup-status` tests the Railway URL and token without returning either secret.
 
 ## 4. Install the Studio plugin
 
-Install the [Rojo CLI](https://rojo.space/docs/) on your computer, then from this directory run:
+Install the [Rojo CLI](https://rojo.space/docs/) once on your computer. From this directory, run the packaging command:
 
 ```sh
-rojo build -o RobloxStudioGameAgent.rbxmx default.project.json
+pnpm run plugin:build
 ```
 
-In Studio, use **Plugins → Manage Plugins → Install from File** and select `RobloxStudioGameAgent.rbxmx`. Restart Studio if the toolbar button does not appear. The first local HTTP request may prompt you to grant the plugin permission to contact `127.0.0.1`; allow it to use the local bridge.
+This creates `RobloxStudioGameAgent.rbxmx` in `tools/roblox-agent/`. In Studio, use **Plugins → Manage Plugins → Install from File** and select that file. Restart Studio if the toolbar button does not appear. The first local HTTP request may prompt you to grant the plugin permission to contact `127.0.0.1`; allow it to use the local bridge.
+
+If the plugin says **Bridge offline**, start the bridge from step 3. If **Railway** is not ready, check `AGENT_API_URL` and `AGENT_API_TOKEN` in the local `.env`, then check `GEMINI_API_KEY` and `AGENT_API_TOKEN` in Railway's service variables. If **Studio MCP** is not connected, enable **Assistant → … → Manage MCP Servers → Enable Studio as MCP server**, leave Studio open, and restart the bridge.
 
 ## Safety and setup notes
 

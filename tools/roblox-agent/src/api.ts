@@ -13,7 +13,9 @@ function requireAgentToken(
 ): void {
   const token = process.env["AGENT_API_TOKEN"];
   if (!token) {
-    res.status(503).json({ error: "Agent API is not configured." });
+    res.status(503).json({
+      error: "Add AGENT_API_TOKEN to the Railway service variables.",
+    });
     return;
   }
 
@@ -30,6 +32,17 @@ app.get("/healthz", (_req, res) => {
     status: "ok",
     configured: Boolean(process.env["GEMINI_API_KEY"] && process.env["AGENT_API_TOKEN"]),
   });
+});
+
+app.get("/api/setup-check", requireAgentToken, (_req, res) => {
+  if (!process.env["GEMINI_API_KEY"]) {
+    res.status(503).json({
+      ready: false,
+      error: "Add GEMINI_API_KEY to the Railway service variables.",
+    });
+    return;
+  }
+  res.json({ ready: true });
 });
 
 app.post(

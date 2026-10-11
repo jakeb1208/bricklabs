@@ -34,7 +34,7 @@ root.Parent = widget
 
 local header = Instance.new("Frame")
 header.Name = "Header"
-header.Size = UDim2.new(1, 0, 0, 58)
+header.Size = UDim2.new(1, 0, 0, 92)
 header.BackgroundColor3 = Color3.fromRGB(32, 38, 50)
 header.BorderSizePixel = 0
 header.Parent = root
@@ -42,7 +42,7 @@ header.Parent = root
 local title = Instance.new("TextLabel")
 title.Name = "Title"
 title.Position = UDim2.fromOffset(16, 7)
-title.Size = UDim2.new(1, -32, 0, 24)
+title.Size = UDim2.new(1, -132, 0, 24)
 title.BackgroundTransparency = 1
 title.Font = Enum.Font.SourceSansBold
 title.Text = "Studio Game Agent"
@@ -51,22 +51,36 @@ title.TextSize = 19
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Parent = header
 
+local checkSetup = Instance.new("TextButton")
+checkSetup.Name = "CheckSetup"
+checkSetup.Position = UDim2.new(1, -112, 0, 7)
+checkSetup.Size = UDim2.fromOffset(96, 26)
+checkSetup.BackgroundColor3 = Color3.fromRGB(54, 66, 88)
+checkSetup.BorderSizePixel = 0
+checkSetup.Font = Enum.Font.SourceSansBold
+checkSetup.Text = "Check setup"
+checkSetup.TextColor3 = Color3.fromRGB(240, 244, 255)
+checkSetup.TextSize = 13
+checkSetup.Parent = header
+
 local status = Instance.new("TextLabel")
 status.Name = "Status"
 status.Position = UDim2.fromOffset(16, 31)
-status.Size = UDim2.new(1, -32, 0, 18)
+status.Size = UDim2.new(1, -32, 0, 52)
 status.BackgroundTransparency = 1
 status.Font = Enum.Font.SourceSans
 status.Text = "Start the local bridge to connect"
 status.TextColor3 = Color3.fromRGB(163, 177, 201)
 status.TextSize = 13
 status.TextXAlignment = Enum.TextXAlignment.Left
+status.TextYAlignment = Enum.TextYAlignment.Top
+status.TextWrapped = true
 status.Parent = header
 
 local chat = Instance.new("ScrollingFrame")
 chat.Name = "Chat"
-chat.Position = UDim2.fromOffset(0, 58)
-chat.Size = UDim2.new(1, 0, 1, -132)
+chat.Position = UDim2.fromOffset(0, 92)
+chat.Size = UDim2.new(1, 0, 1, -166)
 chat.BackgroundTransparency = 1
 chat.BorderSizePixel = 0
 chat.CanvasSize = UDim2.new()
@@ -217,9 +231,11 @@ end
 
 local function updateStatus()
 	task.spawn(function()
-		local config, configError = requestJson("/api/bridge-config", "GET")
+		status.Text = "Checking connection setup…"
+		status.TextColor3 = Color3.fromRGB(163, 177, 201)
+		local config = requestJson("/api/bridge-config", "GET")
 		if not config then
-			status.Text = "Bridge offline — start the local bridge"
+			status.Text = "Bridge offline. Start pnpm --filter @workspace/roblox-agent run dev:bridge."
 			status.TextColor3 = Color3.fromRGB(242, 161, 116)
 			return
 		end
@@ -230,16 +246,17 @@ local function updateStatus()
 		then
 			bridgeRoot = config.apiBaseUrl
 		end
-		local health, healthError = requestJson("/healthz", "GET")
-		if not health then
-			status.Text = "Bridge error — " .. tostring(healthError or configError)
+		local setup, setupError = requestJson("/api/setup-status", "GET")
+		if not setup then
+			status.Text = "Bridge setup check failed: " .. tostring(setupError)
 			status.TextColor3 = Color3.fromRGB(242, 161, 116)
-		elseif health.mcpConnected then
-			status.Text = "Connected to Roblox Studio · " .. tostring(health.toolCount) .. " tools"
-			status.TextColor3 = Color3.fromRGB(124, 218, 169)
 		else
-			status.Text = "Bridge running — enable Studio MCP and restart the bridge"
-			status.TextColor3 = Color3.fromRGB(242, 190, 116)
+			status.Text = "Railway: " .. setup.railway.message .. "\nStudio MCP: " .. setup.studioMcp.message
+			if setup.railway.ready and setup.studioMcp.connected then
+				status.TextColor3 = Color3.fromRGB(124, 218, 169)
+			else
+				status.TextColor3 = Color3.fromRGB(242, 190, 116)
+			end
 		end
 	end)
 end
@@ -377,6 +394,7 @@ local function sendMessage()
 end
 
 send.Activated:Connect(sendMessage)
+checkSetup.Activated:Connect(updateStatus)
 input.FocusLost:Connect(function(enterPressed)
 	if enterPressed then
 		sendMessage()
