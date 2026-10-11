@@ -1,8 +1,9 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
+import { fileURLToPath } from "node:url";
 import { DEFAULT_MODEL, type GeminiGenerateRequest } from "./shared.js";
 
-const app = express();
+export const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
 
@@ -100,11 +101,15 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: "Unexpected server error." });
 });
 
-const port = Number(process.env["PORT"] || 8080);
-if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-  throw new Error("PORT must be a valid TCP port.");
+export function startApi(port = Number(process.env["PORT"] || 8080)) {
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error("PORT must be a valid TCP port.");
+  }
+  return app.listen(port, "0.0.0.0", () => {
+    process.stdout.write(`Roblox agent API listening on ${port}\n`);
+  });
 }
 
-app.listen(port, "0.0.0.0", () => {
-  process.stdout.write(`Roblox agent API listening on ${port}\n`);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  startApi();
+}

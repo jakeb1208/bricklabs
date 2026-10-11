@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import express, { type Request, type Response } from "express";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -32,13 +33,10 @@ type PendingTurn = {
   calls: Array<{ name: string; args: Record<string, unknown> }>;
 };
 
-const app = express();
+export const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "64kb" }));
-const port = Number(process.env["BRIDGE_PORT"] || 4317);
-if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-  throw new Error("BRIDGE_PORT must be a valid TCP port.");
-}
+let bridgePort = Number(process.env["BRIDGE_PORT"] || 4317);
 
 const sessions = new Map<string, GeminiContent[]>();
 const pendingTurns = new Map<string, PendingTurn>();
@@ -162,7 +160,7 @@ type RailwaySetupStatus = {
   message: string;
 };
 
-async function checkRailwaySetup(): Promise<RailwaySetupStatus> {
+export async function checkRailwaySetup(): Promise<RailwaySetupStatus> {
   let apiUrl: string;
   try {
     apiUrl = getApiBaseUrl();
@@ -351,7 +349,7 @@ app.get("/healthz", (_req, res) => {
 
 app.get("/api/bridge-config", (_req, res) => {
   res.json({
-    apiBaseUrl: `http://127.0.0.1:${port}`,
+    apiBaseUrl: `http://127.0.0.1:${bridgePort}`,
     bridgeToken: localToken,
   });
 });
@@ -531,11 +529,28 @@ async function continueTurn(
   });
 }
 
-app.listen(port, "127.0.0.1", () => {
-  process.stdout.write(`Roblox local bridge listening on http://127.0.0.1:${port}\n`);
-  void connectMcp().catch((error: unknown) => {
-    const message =
-      error instanceof Error ? error.message : "Unknown Roblox MCP connection error.";
-    process.stderr.write(`Roblox MCP connection unavailable: ${message}\n`);
+export function startBridge(port = bridgePort, connectStudioMcp = true) {
+  if (!Number.isInteger(port) || port < 0 || port > 65_535) {
+    throw new Error("BRIDGE_PORT must be a valid TCP port.");
+  }
+  const server = app.listen(port, "127.0.0.1", () => {
+    const address = server.address();
+    const listeningPort = typeof address === "object" && address ? address.port : port;
+    bridgePort = listeningPort;
+    process.stdout.write(
+      `Roblox local bridge listening on http://127.0.0.1:${listeningPort}\n`,
+    );
+    if (connectStudioMcp) {
+      void connectMcp().catch((error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : "Unknown Roblox MCP connection error.";
+        process.stderr.write(`Roblox MCP connection unavailable: ${message}\n`);
+      });
+    }
   });
-});
+  return server;
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  startBridge();
+}

@@ -48,6 +48,16 @@ pnpm --filter @workspace/roblox-agent run dev:bridge
 
 The bridge listens only on `127.0.0.1:4317`. Keep that terminal running. Open the plugin to run its setup check; it reports whether Railway is reachable and configured, the local bridge is running, and Studio MCP is connected. To check manually, open `http://127.0.0.1:4317/healthz` for the MCP connection state. The bridge setup check at `http://127.0.0.1:4317/api/setup-status` tests the Railway URL and token without returning either secret.
 
+### Run setup diagnostics tests
+
+From the repository root, run:
+
+```sh
+pnpm --filter @workspace/roblox-agent run test
+```
+
+These tests exercise the Railway URL/token diagnostics, missing server-side Gemini configuration, unreachable API handling, and the bridge's loopback-only binding and disconnected Studio MCP status.
+
 ## 4. Install the Studio plugin
 
 Install the [Rojo CLI](https://rojo.space/docs/) once on your computer. From this directory, run the packaging command:

@@ -10,6 +10,7 @@
     "plugin:build": "rojo build -o RobloxStudioGameAgent.rbxmx default.project.json",
     "start:api": "node dist/api.js",
     "start:bridge": "node --env-file-if-exists=.env dist/bridge.js",
+    "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
