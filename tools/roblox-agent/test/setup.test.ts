@@ -166,6 +166,97 @@ test("Railway setup endpoint reports a missing server-side Gemini key", async ()
   });
 });
 
+test("Gemini proxy returns safe errors for upstream failures and malformed responses", async () => {
+  const savedToken = process.env["AGENT_API_TOKEN"];
+  const savedApiKey = process.env["GEMINI_API_KEY"];
+  const server = apiApp.listen();
+  process.env["AGENT_API_TOKEN"] = "configured-test-token";
+  process.env["GEMINI_API_KEY"] = "server-only-gemini-key";
+
+  try {
+    await withServer(server, async (baseUrl) => {
+      const request = () =>
+        originalFetch(`${baseUrl}/api/gemini/generate`, {
+          method: "POST",
+          headers: {
+            authorization: "Bearer configured-test-token",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: "Hello" }] }] }),
+        });
+
+      mockFetch(
+        async () =>
+          new Response(
+            JSON.stringify({ error: { message: "server-only-gemini-key was rejected" } }),
+            { status: 429, headers: { "content-type": "application/json" } },
+          ),
+      );
+      const upstreamError = await request();
+      assert.equal(upstreamError.status, 429);
+      assert.deepEqual(await upstreamError.json(), {
+        error: "Gemini API returned HTTP 429.",
+      });
+
+      mockFetch(
+        async () =>
+          new Response("server-only-gemini-key is not JSON", {
+            status: 200,
+            headers: { "content-type": "text/plain" },
+          }),
+      );
+      const nonJson = await request();
+      assert.equal(nonJson.status, 502);
+      assert.deepEqual(await nonJson.json(), {
+        error: "Gemini returned an invalid response.",
+      });
+
+      mockFetch(async () => {
+        throw new TypeError("network failed with server-only-gemini-key");
+      });
+      const networkFailure = await request();
+      assert.equal(networkFailure.status, 502);
+      assert.deepEqual(await networkFailure.json(), {
+        error: "Could not reach the Gemini API.",
+      });
+
+      mockFetch(
+        async () =>
+          new Response(
+            JSON.stringify({ unexpected: "server-only-gemini-key" }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+      );
+      const malformedJson = await request();
+      assert.equal(malformedJson.status, 502);
+      assert.deepEqual(await malformedJson.json(), {
+        error: "Gemini returned an invalid response.",
+      });
+
+      mockFetch(
+        async () =>
+          new Response(
+            JSON.stringify({
+              candidates: [{ content: { parts: [{ text: "server-only-gemini-key" }] } }],
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+      );
+      const successfulResponse = await request();
+      assert.equal(successfulResponse.status, 200);
+      const successfulBody = await successfulResponse.text();
+      assert.equal(successfulBody.includes("server-only-gemini-key"), false);
+      assert.match(successfulBody, /\[redacted\]/);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (savedToken === undefined) delete process.env["AGENT_API_TOKEN"];
+    else process.env["AGENT_API_TOKEN"] = savedToken;
+    if (savedApiKey === undefined) delete process.env["GEMINI_API_KEY"];
+    else process.env["GEMINI_API_KEY"] = savedApiKey;
+  }
+});
+
 test("bridge binds only to loopback and clearly reports disconnected Studio MCP", async () => {
   delete process.env["AGENT_API_URL"];
   const server = startBridge(0, false);

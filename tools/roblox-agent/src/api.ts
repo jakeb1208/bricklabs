@@ -80,14 +80,34 @@ app.post(
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(45_000),
       });
-      const responseBody = await upstream.json().catch(() => ({
-        error: { message: "Gemini returned a non-JSON response." },
-      }));
-      res.status(upstream.status).json(responseBody);
+      if (!upstream.ok) {
+        res.status(upstream.status).json({
+          error: `Gemini API returned HTTP ${upstream.status}.`,
+        });
+        return;
+      }
+
+      const responseText = await upstream.text();
+      let responseBody: unknown;
+      try {
+        responseBody = JSON.parse(responseText);
+      } catch {
+        res.status(502).json({ error: "Gemini returned an invalid response." });
+        return;
+      }
+      if (
+        typeof responseBody !== "object" ||
+        responseBody === null ||
+        !Array.isArray((responseBody as { candidates?: unknown }).candidates)
+      ) {
+        res.status(502).json({ error: "Gemini returned an invalid response." });
+        return;
+      }
+
+      const safeResponse = JSON.stringify(responseBody).replaceAll(apiKey, "[redacted]");
+      res.status(200).type("application/json").send(safeResponse);
     } catch (error) {
-      process.stderr.write(
-        `Gemini API request failed: ${error instanceof Error ? error.message : "unknown error"}\n`,
-      );
+      process.stderr.write("Gemini API request failed before a response was received.\n");
       res.status(502).json({ error: "Could not reach the Gemini API." });
     }
   },
