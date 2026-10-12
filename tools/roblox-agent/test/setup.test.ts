@@ -123,7 +123,7 @@ test("guided bridge setup gives actionable advice for missing API and MCP settin
 test("Windows default MCP launcher quotes the Roblox batch path for profile folders with spaces", () => {
   assert.deepEqual(getDefaultMcpLaunchConfiguration("win32"), {
     command: "cmd.exe",
-    args: ["/d", "/s", "/c", '""%LOCALAPPDATA%\\Roblox\\mcp.bat""'],
+    args: ["/d", "/c", '"%LOCALAPPDATA%\\Roblox\\mcp.bat"'],
   });
 });
 

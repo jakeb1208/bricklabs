@@ -103,9 +103,9 @@ export function getDefaultMcpLaunchConfiguration(
   if (platform === "win32") {
     return {
       command: "cmd.exe",
-      // cmd.exe needs the outer quote pair so the batch path still works when
-      // LOCALAPPDATA contains spaces, as it commonly does in Windows usernames.
-      args: ["/d", "/s", "/c", '""%LOCALAPPDATA%\\Roblox\\mcp.bat""'],
+      // With /c (and no /s), cmd preserves this one quoted path so spaces in
+      // LOCALAPPDATA do not split the batch-file command.
+      args: ["/d", "/c", '"%LOCALAPPDATA%\\Roblox\\mcp.bat"'],
     };
   }
   if (platform === "darwin") {

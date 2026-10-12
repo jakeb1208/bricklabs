@@ -1,6 +1,6 @@
 - [Workspace dependency-install safety](pnpm-workspace-safety.md) — audit workspace configuration after pnpm dependency changes to preserve release-age safeguards.
 - [Python shell module side effect](python-shell-module-side-effect.md) — a Python shell invocation may add a Python module to `.replit`; restore via the validated config flow.
 - [MCP stdio test environments](mcp-stdio-test-environments.md) — local MCP child processes inherit only a safe environment-variable allowlist by default.
-- [Windows Roblox MCP launcher](windows-mcp-launch.md) — quote cmd.exe’s batch path because Windows profile folders commonly contain spaces.
+- [Windows Roblox MCP launcher](windows-mcp-launch.md) — use one quoted path with cmd.exe /c (without /s) when profile folders contain spaces.
 - [Post-merge runtime budget](post-merge-runtime.md) — an up-to-date frozen install and database check take about 30 seconds in this workspace.
 - [Roblox Studio agent goal](roblox-studio-agent-goal.md) — build a working Gemini-powered Studio agent and eventually open-source it for users' own API keys.
