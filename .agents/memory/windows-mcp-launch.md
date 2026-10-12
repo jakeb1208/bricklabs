@@ -7,4 +7,4 @@ When launching Roblox Studio's MCP batch file from Node on Windows, keep the quo
 
 **Why:** A Windows profile path such as `C:\Users\First Last\...` was split at the space by the unquoted default command, so `cmd.exe` tried to execute only the first path segment.
 
-**How to apply:** Keep the wrapper call as `call "%LOCALAPPDATA%\\Roblox\\mcp.bat"` and launch the wrapper with simple `cmd.exe /d /c` arguments; cover its path quoting in tests.
+**How to apply:** Keep the wrapper call as `call "%LOCALAPPDATA%\Roblox\mcp.bat"` and launch the wrapper with simple `cmd.exe /d /c` arguments; cover its path quoting in tests.
