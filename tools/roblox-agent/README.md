@@ -69,7 +69,9 @@ Install the [Rojo CLI](https://rojo.space/docs/) once on your computer. From thi
 pnpm run plugin:build
 ```
 
-This creates `RobloxStudioGameAgent.rbxmx` in `tools/roblox-agent/`. In Studio, use **Plugins → Manage Plugins → Install from File** and select that file. Restart Studio if the toolbar button does not appear. The first local HTTP request may prompt you to grant the plugin permission to contact `127.0.0.1`; allow it to use the local bridge.
+This creates `RobloxStudioGameAgent.rbxmx` in `tools/roblox-agent/`. To install this local build, copy the file into `%LOCALAPPDATA%\Roblox\Plugins\` (use **Plugins → Plugins Folder** to open that destination). Do not double-click the `.rbxmx` file, and do not use **Manage Plugins**; that window is for Creator Store plugins. Fully close and reopen Studio. The plugin should add a **Studio Game Agent** button to the Plugins ribbon.
+
+If the button still does not appear, enable **Plugin Debugging Enabled** in **File → Studio Settings → Studio**, then inspect `PluginDebugService` in Explorer and the Output window for a plugin load error. The first local HTTP request may prompt you to grant the plugin permission to contact `127.0.0.1`; allow it to use the local bridge.
 
 If the plugin says **Bridge offline**, start the bridge from step 3. If **Railway** is not ready, check `AGENT_API_URL` and `AGENT_API_TOKEN` in the local `.env`, then check `GEMINI_API_KEY` and `AGENT_API_TOKEN` in Railway's service variables. If **Studio MCP** is not connected, enable **Assistant → … → Manage MCP Servers → Enable Studio as MCP server**, leave Studio open, and restart the bridge.
 
