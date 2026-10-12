@@ -369,19 +369,22 @@ test("chat and approval reject bad tokens without starting Studio or consuming a
       contents: Array<Record<string, unknown>>;
     };
     geminiRequests.push(requestBody);
-    const content = [1, 3].includes(outboundFetches)
-      ? { role: "model", parts: [{ functionCall: { name: "write_script", args: {} } }] }
-      : {
-          role: "model",
-          parts: [
-            {
-              text:
-                outboundFetches === 2
-                  ? "The change was declined."
-                  : "Studio action completed with result: written.",
-            },
-          ],
-        };
+    const content =
+      outboundFetches === 5
+        ? { role: "model", parts: [] }
+        : [1, 3].includes(outboundFetches)
+          ? { role: "model", parts: [{ functionCall: { name: "write_script", args: {} } }] }
+          : {
+              role: "model",
+              parts: [
+                {
+                  text:
+                    outboundFetches === 2
+                      ? "The change was declined."
+                      : "Studio action completed with result: written.",
+                },
+              ],
+            };
     return new Response(JSON.stringify({ candidates: [{ content }] }), {
       headers: { "content-type": "application/json" },
     });
@@ -520,6 +523,24 @@ test("chat and approval reject bad tokens without starting Studio or consuming a
           },
         ],
       });
+
+      const emptyReplyResponse = await originalFetch(`${baseUrl}/api/chat`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${config.bridgeToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          message: "Return a response.",
+          sessionId: "empty-model-response-session",
+        }),
+      });
+      assert.equal(emptyReplyResponse.status, 502);
+      assert.deepEqual(await emptyReplyResponse.json(), {
+        error:
+          "Gemini returned no text or Studio action. Check your Gemini rate limits, then retry with a smaller request. If you just approved a Studio action, inspect the scene before retrying because that action may already have run.",
+      });
+      assert.equal(outboundFetches, 5);
     });
   } finally {
     try {

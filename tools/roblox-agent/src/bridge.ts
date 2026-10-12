@@ -477,6 +477,11 @@ async function continueTurn(
         .filter(Boolean)
         .join("\n")
         .trim();
+      if (!answer) {
+        throw new Error(
+          "Gemini returned no text or Studio action. Check your Gemini rate limits, then retry with a smaller request. If you just approved a Studio action, inspect the scene before retrying because that action may already have run.",
+        );
+      }
       sessions.set(sessionId, history.slice(-MAX_CHAT_TURNS * 2));
       res.json({ sessionId, answer });
       return;
