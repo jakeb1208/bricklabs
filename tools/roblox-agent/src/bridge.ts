@@ -103,9 +103,9 @@ export function getDefaultMcpLaunchConfiguration(
   if (platform === "win32") {
     return {
       command: "cmd.exe",
-      // With /c (and no /s), cmd preserves this one quoted path so spaces in
-      // LOCALAPPDATA do not split the batch-file command.
-      args: ["/d", "/c", '"%LOCALAPPDATA%\\Roblox\\mcp.bat"'],
+      // Keep path quoting inside the .cmd file so Node's Windows argument
+      // escaping cannot turn quotes into literal characters for cmd.exe.
+      args: ["/d", "/c", "launch-roblox-mcp.cmd"],
     };
   }
   if (platform === "darwin") {

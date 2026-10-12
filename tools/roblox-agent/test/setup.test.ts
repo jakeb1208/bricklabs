@@ -120,11 +120,16 @@ test("guided bridge setup gives actionable advice for missing API and MCP settin
   assert.match(invalidArgs.join("\n"), /ROBLOX_MCP_ARGS must be a JSON array/);
 });
 
-test("Windows default MCP launcher quotes the Roblox batch path for profile folders with spaces", () => {
+test("Windows default MCP launcher uses the wrapper for the Roblox batch path", async () => {
   assert.deepEqual(getDefaultMcpLaunchConfiguration("win32"), {
     command: "cmd.exe",
-    args: ["/d", "/c", '"%LOCALAPPDATA%\\Roblox\\mcp.bat"'],
+    args: ["/d", "/c", "launch-roblox-mcp.cmd"],
   });
+  const wrapper = await readFile(
+    new URL("../launch-roblox-mcp.cmd", import.meta.url),
+    "utf8",
+  );
+  assert.match(wrapper, /call "%LOCALAPPDATA%\\Roblox\\mcp\.bat"/);
 });
 
 test("setup diagnostics report a rejected Railway token without exposing it", async () => {
