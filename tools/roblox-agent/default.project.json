@@ -1,7 +1,7 @@
 {
   "name": "RobloxStudioGameAgent",
   "tree": {
-    "$className": "Plugin",
+    "$className": "Folder",
     "RobloxStudioGameAgent": {
       "$path": "src/Plugin.server.lua"
     }

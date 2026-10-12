@@ -132,6 +132,17 @@ test("Windows default MCP launcher uses the wrapper for the Roblox batch path", 
   assert.match(wrapper, /call "%LOCALAPPDATA%\\Roblox\\mcp\.bat"/);
 });
 
+test("Rojo plugin artifact uses a Folder root with the plugin script inside", async () => {
+  const project = JSON.parse(
+    await readFile(new URL("../default.project.json", import.meta.url), "utf8"),
+  );
+  assert.equal(project.tree.$className, "Folder");
+  assert.equal(
+    project.tree.RobloxStudioGameAgent.$path,
+    "src/Plugin.server.lua",
+  );
+});
+
 test("setup diagnostics report a rejected Railway token without exposing it", async () => {
   process.env["AGENT_API_URL"] = "https://railway.example";
   process.env["AGENT_API_TOKEN"] = "invalid-secret-for-test";
