@@ -219,7 +219,22 @@ test("Gemini proxy returns safe errors for upstream failures and malformed respo
       const upstreamError = await request();
       assert.equal(upstreamError.status, 429);
       assert.deepEqual(await upstreamError.json(), {
-        error: "Gemini API returned HTTP 429.",
+        error: "Gemini API returned HTTP 429: [redacted] was rejected",
+      });
+
+      mockFetch(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: { message: "Invalid function declaration: unsupported schema field." },
+            }),
+            { status: 400, headers: { "content-type": "application/json" } },
+          ),
+      );
+      const invalidRequest = await request();
+      assert.equal(invalidRequest.status, 400);
+      assert.deepEqual(await invalidRequest.json(), {
+        error: "Gemini API returned HTTP 400: Invalid function declaration: unsupported schema field.",
       });
 
       mockFetch(

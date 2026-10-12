@@ -7,6 +7,18 @@ export const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
 
+function getSafeGeminiErrorMessage(body: unknown, apiKey: string): string | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const error = (body as { error?: { message?: unknown } }).error;
+  if (!error || typeof error.message !== "string") return undefined;
+  const message = error.message
+    .replaceAll(apiKey, "[redacted]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+  return message || undefined;
+}
+
 function requireAgentToken(
   req: Request,
   res: Response,
@@ -80,18 +92,25 @@ app.post(
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(45_000),
       });
-      if (!upstream.ok) {
-        res.status(upstream.status).json({
-          error: `Gemini API returned HTTP ${upstream.status}.`,
-        });
-        return;
-      }
-
       const responseText = await upstream.text();
       let responseBody: unknown;
       try {
         responseBody = JSON.parse(responseText);
       } catch {
+        responseBody = undefined;
+      }
+      if (!upstream.ok) {
+        const providerMessage = getSafeGeminiErrorMessage(responseBody, apiKey);
+        const message = providerMessage
+          ? `Gemini API returned HTTP ${upstream.status}: ${providerMessage}`
+          : `Gemini API returned HTTP ${upstream.status}.`;
+        res.status(upstream.status).json({
+          error: message,
+        });
+        return;
+      }
+
+      if (responseBody === undefined) {
         res.status(502).json({ error: "Gemini returned an invalid response." });
         return;
       }
