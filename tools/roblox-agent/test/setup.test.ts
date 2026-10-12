@@ -9,6 +9,7 @@ import { app as apiApp } from "../src/api.js";
 import {
   app as bridgeApp,
   checkRailwaySetup,
+  getDefaultMcpLaunchConfiguration,
   startBridge,
 } from "../src/bridge.js";
 import { validateBridgeEnvironment } from "../src/setup-bridge.js";
@@ -117,6 +118,13 @@ test("guided bridge setup gives actionable advice for missing API and MCP settin
     "linux",
   );
   assert.match(invalidArgs.join("\n"), /ROBLOX_MCP_ARGS must be a JSON array/);
+});
+
+test("Windows default MCP launcher quotes the Roblox batch path for profile folders with spaces", () => {
+  assert.deepEqual(getDefaultMcpLaunchConfiguration("win32"), {
+    command: "cmd.exe",
+    args: ["/d", "/s", "/c", '""%LOCALAPPDATA%\\Roblox\\mcp.bat""'],
+  });
 });
 
 test("setup diagnostics report a rejected Railway token without exposing it", async () => {

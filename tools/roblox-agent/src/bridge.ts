@@ -97,6 +97,28 @@ function toGeminiTools(tools: ToolDefinition[]): Array<Record<string, unknown>> 
   ];
 }
 
+export function getDefaultMcpLaunchConfiguration(
+  platform: NodeJS.Platform,
+): { command: string; args: string[] } {
+  if (platform === "win32") {
+    return {
+      command: "cmd.exe",
+      // cmd.exe needs the outer quote pair so the batch path still works when
+      // LOCALAPPDATA contains spaces, as it commonly does in Windows usernames.
+      args: ["/d", "/s", "/c", '""%LOCALAPPDATA%\\Roblox\\mcp.bat""'],
+    };
+  }
+  if (platform === "darwin") {
+    return {
+      command: "/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP",
+      args: [],
+    };
+  }
+  throw new Error(
+    "Roblox Studio MCP auto-detection supports Windows and macOS. Set ROBLOX_MCP_COMMAND and ROBLOX_MCP_ARGS manually on this operating system.",
+  );
+}
+
 async function connectMcp(): Promise<void> {
   if (mcpClient) return;
   if (connecting) return connecting;
@@ -114,16 +136,9 @@ async function connectMcp(): Promise<void> {
     }
 
     if (!command) {
-      if (process.platform === "win32") {
-        command = "cmd.exe";
-        args = ["/c", "%LOCALAPPDATA%\\Roblox\\mcp.bat"];
-      } else if (process.platform === "darwin") {
-        command = "/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP";
-      } else {
-        throw new Error(
-          "Roblox Studio MCP auto-detection supports Windows and macOS. Set ROBLOX_MCP_COMMAND and ROBLOX_MCP_ARGS manually on this operating system.",
-        );
-      }
+      const defaults = getDefaultMcpLaunchConfiguration(process.platform);
+      command = defaults.command;
+      args = defaults.args;
     }
 
     const transport = new StdioClientTransport({
