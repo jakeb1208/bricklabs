@@ -4,3 +4,4 @@
 - [Windows Roblox MCP launcher](windows-mcp-launch.md) — keep Roblox batch-path quotes inside a .cmd wrapper instead of passing them through Node arguments.
 - [Post-merge runtime budget](post-merge-runtime.md) — an up-to-date frozen install and database check take about 30 seconds in this workspace.
 - [Roblox Studio agent goal](roblox-studio-agent-goal.md) — build a working Gemini-powered Studio agent and eventually open-source it for users' own API keys.
+- [Gemini authorization-key migration](gemini-auth-key-migration.md) — new AI Studio key types can produce 401s; inspect the provider reason before rotating keys again.
