@@ -5,3 +5,4 @@
 - [Post-merge runtime budget](post-merge-runtime.md) — an up-to-date frozen install and database check take about 30 seconds in this workspace.
 - [Roblox Studio agent goal](roblox-studio-agent-goal.md) — build a working Gemini-powered Studio agent and eventually open-source it for users' own API keys.
 - [Gemini authorization-key migration](gemini-auth-key-migration.md) — new AI Studio key types can produce 401s; inspect the provider reason before rotating keys again.
+- [GitHub push authentication](github-push-auth.md) — if workspace Git push fails despite an active GitHub connection, avoid credential workarounds and let the user push through their authenticated client.
